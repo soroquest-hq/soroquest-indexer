@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/ayomustap/soroquest-indexer/internal/db"
+	"github.com/soroquest-hq/soroquest-indexer/internal/db"
 )
 
 // Server holds the HTTP server and its dependencies.
@@ -28,13 +29,16 @@ func (s *Server) Run(ctx context.Context) error {
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware)
 
+	bountiesHandler := NewBountiesHandler(s.db)
+	healthHandler := NewHealthHandler(s.db)
+
 	// Routes
-	r.Get("/health", s.handleHealth)
-	r.Route("/api/v1", func(r chi.Router) {
-		r.Get("/bounties", s.handleListBounties)
-		r.Get("/bounties/{id}", s.handleGetBounty)
-		r.Get("/bounties/{id}/events", s.handleGetBountyEvents)
-		r.Get("/stats", s.handleGetStats)
+	r.Get("/health", healthHandler.Check)
+	r.Route("/api", func(r chi.Router) {
+		r.Get("/bounties", bountiesHandler.List)
+		r.Get("/bounties/{id}", bountiesHandler.Get)
+		r.Get("/bounties/{id}/events", bountiesHandler.Events)
+		r.Get("/stats", bountiesHandler.Stats)
 	})
 
 	srv := &http.Server{
@@ -55,9 +59,16 @@ func (s *Server) Run(ctx context.Context) error {
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*") // TODO: restrict to Vercel domain
+		// Vercel domain restriction (using environment variable, default to * for dev)
+		origin := os.Getenv("ALLOWED_ORIGIN")
+		if origin == "" {
+			origin = "*"
+		}
+
+		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

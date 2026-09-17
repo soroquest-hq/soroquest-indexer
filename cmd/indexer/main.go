@@ -8,10 +8,10 @@ import (
 	"syscall"
 
 	"github.com/joho/godotenv"
-	"github.com/ayomustap/soroquest-indexer/internal/api"
-	"github.com/ayomustap/soroquest-indexer/internal/db"
-	"github.com/ayomustap/soroquest-indexer/internal/ingest"
-	"github.com/ayomustap/soroquest-indexer/internal/stellar"
+	"github.com/soroquest-hq/soroquest-indexer/internal/api"
+	"github.com/soroquest-hq/soroquest-indexer/internal/db"
+	"github.com/soroquest-hq/soroquest-indexer/internal/ingest"
+	"github.com/soroquest-hq/soroquest-indexer/internal/stellar"
 )
 
 func main() {
@@ -21,7 +21,7 @@ func main() {
 	defer cancel()
 
 	// Database
-	database, err := db.New(ctx, mustEnv("DATABASE_URL"))
+	database, err := db.Connect(ctx, mustEnv("DATABASE_URL"))
 	if err != nil {
 		log.Fatalf("db: %v", err)
 	}
@@ -35,7 +35,7 @@ func main() {
 	)
 
 	// Ingestion loop (runs in background)
-	indexer := ingest.New(database, stellarClient)
+	indexer := ingest.New(database, stellarClient) // 5 second poll interval
 	go func() {
 		if err := indexer.Run(ctx); err != nil {
 			log.Printf("ingest: %v", err)

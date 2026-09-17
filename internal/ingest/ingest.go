@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/ayomustap/soroquest-indexer/internal/db"
-	"github.com/ayomustap/soroquest-indexer/internal/stellar"
+	"github.com/soroquest-hq/soroquest-indexer/internal/db"
+	"github.com/soroquest-hq/soroquest-indexer/internal/stellar"
 )
 
 const pollInterval = 5 * time.Second
@@ -40,7 +40,8 @@ func (idx *Indexer) Run(ctx context.Context) error {
 func (idx *Indexer) tick(ctx context.Context) error {
 	lastLedger, err := GetLastLedger(ctx, idx.db)
 	if err != nil {
-		return err
+		// Start at 0 if no cursor exists
+		lastLedger = 0
 	}
 
 	events, err := idx.rpc.GetEvents(ctx, lastLedger+1)
@@ -48,21 +49,43 @@ func (idx *Indexer) tick(ctx context.Context) error {
 		return err
 	}
 
+	var latestLedger uint64 = lastLedger
+
 	for _, event := range events {
-		if err := idx.processEvent(ctx, event); err != nil {
+		if err := processEvent(ctx, idx.db, event); err != nil {
 			return err
 		}
+		if event.Ledger > latestLedger {
+			latestLedger = event.Ledger
+		}
 	}
-	return nil
-}
 
-// processEvent dispatches a single contract event to the appropriate handler.
-// Wrapped in a database transaction: cursor only advances on success.
-func (idx *Indexer) processEvent(ctx context.Context, event stellar.ContractEvent) error {
-	// TODO: begin db transaction
-	// dispatch by event.Type → handlePosted / handleClaimed / handleCompleted / handleCancelled
-	// insert into events table
-	// update cursor.last_ledger to event.Ledger
-	// commit transaction
-	panic("not implemented")
+	if latestLedger > lastLedger {
+		// Update the global cursor
+		tx, err := idx.db.Pool().Begin(ctx)
+		if err == nil {
+			if err := UpdateLastLedgerTx(ctx, tx, latestLedger); err == nil {
+				tx.Commit(ctx)
+			} else {
+				tx.Rollback(ctx)
+			}
+		}
+	}
+
+	// If there were no events, maybe we can fast forward cursor to the network's latest ledger
+	if len(events) == 0 {
+		netLatest, err := idx.rpc.GetLatestLedger(ctx)
+		if err == nil && netLatest > latestLedger {
+			tx, err := idx.db.Pool().Begin(ctx)
+			if err == nil {
+				if err := UpdateLastLedgerTx(ctx, tx, netLatest); err == nil {
+					tx.Commit(ctx)
+				} else {
+					tx.Rollback(ctx)
+				}
+			}
+		}
+	}
+
+	return nil
 }

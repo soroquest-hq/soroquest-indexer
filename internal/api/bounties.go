@@ -6,56 +6,111 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/soroquest-hq/soroquest-indexer/internal/db"
 )
 
-func (s *Server) handleListBounties(w http.ResponseWriter, r *http.Request) {
-	// TODO: parse query params: status, limit (default 20), offset (default 0)
-	// call db.ListBounties
-	// return JSON: { bounties: [], total: 0, limit: 20, offset: 0 }
-	writeJSON(w, http.StatusOK, map[string]any{
-		"bounties": []any{},
-		"total":    0,
-		"limit":    20,
-		"offset":   0,
-	})
+type BountiesHandler struct {
+	db *db.DB
 }
 
-func (s *Server) handleGetBounty(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
+func NewBountiesHandler(db *db.DB) *BountiesHandler {
+	return &BountiesHandler{db: db}
+}
+
+// List handles GET /api/bounties
+func (h *BountiesHandler) List(w http.ResponseWriter, r *http.Request) {
+	statusQuery := r.URL.Query().Get("status")
+	var status *string
+	if statusQuery != "" {
+		status = &statusQuery
+	}
+
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	offset := 0
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	bounties, total, err := h.db.ListBounties(r.Context(), status, limit, offset)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid bounty id")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// TODO: call db.GetBounty(id)
-	// return 404 if not found
-	_ = id
-	writeError(w, http.StatusNotImplemented, "not implemented")
-}
 
-func (s *Server) handleGetBountyEvents(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid bounty id")
-		return
+	if bounties == nil {
+		bounties = []db.Bounty{} // Return empty array instead of null
 	}
-	// TODO: call db.ListEventsByBounty(id)
-	_ = id
-	writeError(w, http.StatusNotImplemented, "not implemented")
-}
 
-func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
-	// TODO: call db.GetStats()
-	writeError(w, http.StatusNotImplemented, "not implemented")
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
+	res := map[string]any{
+		"data": bounties,
+		"meta": map[string]any{
+			"total":  total,
+			"limit":  limit,
+			"offset": offset,
+		},
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	json.NewEncoder(w).Encode(res)
 }
 
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
+// Get handles GET /api/bounties/{id}
+func (h *BountiesHandler) Get(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	bounty, err := h.db.GetBounty(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(bounty)
+}
+
+// Events handles GET /api/bounties/{id}/events
+func (h *BountiesHandler) Events(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	events, err := h.db.ListEventsByBounty(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if events == nil {
+		events = []db.Event{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(events)
+}
+
+// Stats handles GET /api/stats
+func (h *BountiesHandler) Stats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.db.GetStats(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
 }
