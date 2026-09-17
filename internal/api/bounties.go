@@ -25,6 +25,18 @@ func (h *BountiesHandler) List(w http.ResponseWriter, r *http.Request) {
 		status = &statusQuery
 	}
 
+	ownerQuery := r.URL.Query().Get("owner")
+	var owner *string
+	if ownerQuery != "" {
+		owner = &ownerQuery
+	}
+
+	claimantQuery := r.URL.Query().Get("claimant")
+	var claimant *string
+	if claimantQuery != "" {
+		claimant = &claimantQuery
+	}
+
 	limit := 50
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
@@ -39,7 +51,7 @@ func (h *BountiesHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	bounties, total, err := h.db.ListBounties(r.Context(), status, limit, offset)
+	bounties, total, err := h.db.ListBounties(r.Context(), status, owner, claimant, limit, offset)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

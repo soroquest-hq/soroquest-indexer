@@ -74,39 +74,54 @@ func (d *DB) GetBounty(ctx context.Context, id uint64) (Bounty, error) {
 	return b, err
 }
 
-// ListBounties fetches bounties with optional status filter and pagination.
-func (d *DB) ListBounties(ctx context.Context, filter *string, limit, offset int) ([]Bounty, int, error) {
+// ListBounties fetches bounties with optional filters and pagination.
+func (d *DB) ListBounties(ctx context.Context, statusFilter *string, ownerFilter *string, claimantFilter *string, limit, offset int) ([]Bounty, int, error) {
 	var bounties []Bounty
 	var total int
 
-	// 1. Get total count
-	countQuery := `SELECT COUNT(*) FROM bounties`
-	var argsCount []any
-	if filter != nil {
-		countQuery += ` WHERE status = $1`
-		argsCount = append(argsCount, *filter)
+	queryConditions := []string{}
+	args := []interface{}{}
+	argId := 1
+
+	if statusFilter != nil {
+		queryConditions = append(queryConditions, fmt.Sprintf("status = $%d", argId))
+		args = append(args, *statusFilter)
+		argId++
 	}
-	if err := d.pool.QueryRow(ctx, countQuery, argsCount...).Scan(&total); err != nil {
+	if ownerFilter != nil {
+		queryConditions = append(queryConditions, fmt.Sprintf("owner = $%d", argId))
+		args = append(args, *ownerFilter)
+		argId++
+	}
+	if claimantFilter != nil {
+		queryConditions = append(queryConditions, fmt.Sprintf("claimant = $%d", argId))
+		args = append(args, *claimantFilter)
+		argId++
+	}
+
+	whereClause := ""
+	if len(queryConditions) > 0 {
+		whereClause = " WHERE " + strings.Join(queryConditions, " AND ")
+	}
+
+	// 1. Get total count
+	countQuery := `SELECT COUNT(*) FROM bounties` + whereClause
+	err := d.pool.QueryRow(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
 		return nil, 0, err
 	}
 
-	// 2. Get rows
-	query := `
+	// 2. Fetch data
+	dataQuery := `
 		SELECT id, owner, title, description, amount, token, status, claimant, created_at, claim_deadline, updated_at
 		FROM bounties
-	`
-	var args []any
-	paramCount := 1
-	if filter != nil {
-		query += fmt.Sprintf(` WHERE status = $%d`, paramCount)
-		args = append(args, *filter)
-		paramCount++
-	}
+	` + whereClause + `
+		ORDER BY id DESC
+		LIMIT $` + fmt.Sprint(argId) + ` OFFSET $` + fmt.Sprint(argId+1)
 
-	query += fmt.Sprintf(` ORDER BY id DESC LIMIT $%d OFFSET $%d`, paramCount, paramCount+1)
 	args = append(args, limit, offset)
 
-	rows, err := d.pool.Query(ctx, query, args...)
+	rows, err := d.pool.Query(ctx, dataQuery, args...)
 	if err != nil {
 		return nil, 0, err
 	}
