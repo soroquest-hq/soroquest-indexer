@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: soroquest-indexer
+    env: go
+    plan: free
+    region: oregon
+    buildCommand: go build -o bin/indexer ./cmd/indexer
+    startCommand: ./bin/indexer
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: STELLAR_RPC_URL
+        value: https://soroban-testnet.stellar.org
+      - key: STELLAR_NETWORK_PASSPHRASE
+        value: "Test SDF Network ; September 2015"
+      - key: CONTRACT_ID
+        value: CA7C6LGWPTZVUTZX7EXJVLWCQG6DVWPROBPO3FGXYKEY4W5H4HRPO5UV
+      - key: DATABASE_URL
+        fromDatabase:
+          name: soroquest-db
+          property: connectionString
+
+databases:
+  - name: soroquest-db
+    plan: free
+    region: oregon
+    databaseName: soroquest
+    user: soroquest_user
+
