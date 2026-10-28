@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: soroquest-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: soroquest_user
+      POSTGRES_PASSWORD: soroquest_password
+      POSTGRES_DB: soroquest
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U soroquest_user -d soroquest"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soroquest-indexer
+    restart: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      DATABASE_URL: "postgres://soroquest_user:soroquest_password@postgres:5432/soroquest?sslmode=disable"
+      STELLAR_RPC_URL: "https://soroban-testnet.stellar.org"
+      NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+      STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+      CONTRACT_ID: "CA7C6LGWPTZVUTZX7EXJVLWCQG6DVWPROBPO3FGXYKEY4W5H4HRPO5UV"
+      ALLOWED_ORIGIN: "*"
+
+volumes:
+  pgdata:
