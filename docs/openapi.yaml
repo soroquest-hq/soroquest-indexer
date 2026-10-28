@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: SoroQuest Indexer API
+  description: High-performance event indexer and REST API for SoroQuest Soroban Escrow contracts on Stellar.
+  version: 0.1.0
+servers:
+  - url: https://soroquest-indexer.onrender.com
+    description: Production Render Deployment
+  - url: http://localhost:8080
+    description: Local Development Server
+
+paths:
+  /health:
+    get:
+      summary: Indexer Health Check
+      description: Returns database connectivity, ingestion state, and uptime.
+      responses:
+        '200':
+          description: Service is healthy and operational
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  db:
+                    type: string
+                    example: ok
+                  last_ledger:
+                    type: integer
+                    example: 124500
+                  uptime:
+                    type: string
+                    example: 2h14m5s
+
+  /bounties:
+    get:
+      summary: List and Filter Bounties
+      description: Retrieves a paginated list of bounties with optional status and creator filters.
+      parameters:
+        - name: status
+          in: query
+          description: Filter by bounty status (open, claimed, completed, cancelled)
+          required: false
+          schema:
+            type: string
+            enum: [open, claimed, completed, cancelled]
+        - name: owner
+          in: query
+          description: Filter by bounty creator Stellar public key
+          required: false
+          schema:
+            type: string
+            example: GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUO5U
+        - name: claimant
+          in: query
+          description: Filter by claimant Stellar public key
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Page size (default 20, max 100)
+          required: false
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          description: Number of records to skip
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of bounties matching criteria
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Bounty'
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+
+  /bounties/{id}:
+    get:
+      summary: Get Bounty by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Bounty details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bounty'
+        '404':
+          description: Bounty not found
+
+components:
+  schemas:
+    Bounty:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        owner:
+          type: string
+          example: GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUO5U
+        title:
+          type: string
+          example: Build Telegram Notification Bot
+        description:
+          type: string
+        amount:
+          type: string
+          example: "50000000"
+        token:
+          type: string
+          example: CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA
+        status:
+          type: string
+          enum: [open, claimed, completed, cancelled]
+        claimant:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+        claim_deadline:
+          type: integer
