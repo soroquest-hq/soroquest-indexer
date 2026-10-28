@@ -28,10 +28,15 @@ func main() {
 	defer database.Close()
 
 	// Stellar RPC client
+	passphrase := os.Getenv("NETWORK_PASSPHRASE")
+	if passphrase == "" {
+		passphrase = mustEnv("STELLAR_NETWORK_PASSPHRASE")
+	}
+
 	stellarClient := stellar.NewClient(
 		mustEnv("STELLAR_RPC_URL"),
 		mustEnv("CONTRACT_ID"),
-		mustEnv("NETWORK_PASSPHRASE"),
+		passphrase,
 	)
 
 	// Ingestion loop (runs in background)
